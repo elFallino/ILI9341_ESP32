@@ -28,12 +28,13 @@ class ILI9341_ESP32 {
       uint16_t _height;       //internal height, e.g. after rotating the screen
       uint8_t pin_miso, pin_mosi, pin_clk, pin_cs, pin_dc, pin_reset;
       uint8_t rotation;
+      uint8_t buf[64];
       void writeCommand(uint8_t command);
       void writeData(uint8_t * data, size_t length);
       void writeData(uint8_t data);
 
       void setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
-      void drawPixels(const uint16_t * data, size_t length);
+      void drawPixels(size_t length);
 
 };
 

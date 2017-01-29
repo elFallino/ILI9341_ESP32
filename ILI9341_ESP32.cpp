@@ -5,7 +5,7 @@
 
 
 static inline void spi_begin(void) __attribute__((always_inline));
-static inline void spi_begin(void) { SPI.beginTransaction(SPISettings(48000000, MSBFIRST, SPI_MODE0)); };             //NOTE: found some notes in google that most ILI9341 can handle that speed when only receiving data. Not checked if this speed is really applied.
+static inline void spi_begin(void) { SPI.beginTransaction(SPISettings(80000000, MSBFIRST, SPI_MODE0)); };             //NOTE: found some notes in google that most ILI9341 can handle that speed when only receiving data. Not checked if this speed is really applied.
 static inline void spi_end(void) __attribute__((always_inline));
 static inline void spi_end(void) {};
 
@@ -208,12 +208,11 @@ void ILI9341_ESP32::setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_
 
 
 void ILI9341_ESP32::drawPixel(uint16_t x, uint16_t y, uint16_t color){
+  if((x < 0) ||(x >= _width) || (y < 0) || (y >= _height)) return;
   spi_begin();
   setAddrWindow(x,y,x+1,y+1);
   digitalWrite(pin_dc, HIGH);
-  //digitalWrite(pin_cs, LOW);
   SPI.write16(color);
-  //digitalWrite(pin_cs, HIGH);
   spi_end();
 };
 
@@ -221,8 +220,12 @@ void ILI9341_ESP32::drawPixel(uint16_t x, uint16_t y, uint16_t color){
 
 
 
-void ILI9341_ESP32::drawPixels(const uint16_t * data, size_t length){
-
+void ILI9341_ESP32::drawPixels(size_t length){
+  while(length>=32){
+    SPI.writeBytes(buf, 64);
+    length-=32;
+  };
+  if(length>0)SPI.writeBytes(buf, length*2);       //write rest if any
 };
 
 
@@ -231,66 +234,76 @@ void ILI9341_ESP32::clearDisplay (){
 }
 
 
+/**
+
+--------------- drawing lines ---------------
+
+**/
+
+
 void ILI9341_ESP32::drawFastVLine(uint16_t x, uint16_t y, uint16_t h, uint16_t color){
-  uint8_t buf[64];                                                              //ESP32 can send 64 Bytes at once ... makes 32 pixel @ 16 Bit color
-  for(uint8_t i=0; i<64; i+=2){                                                 //Fill buffer. We don't take care if the line is smaller than this buffe
-      buf[i]=color>>8;                                                          //...maybe we should take care later
-      buf[i+1]=color;
-  }
-  spi_begin();
-  setAddrWindow(x,y,x+1,h-1);
-  digitalWrite(pin_dc, HIGH);
-  while(h>=32){
-    SPI.writeBytes(buf, 64);
-    h-=32;
-  };
-  if(h>0)SPI.writeBytes(buf, h*2);       //write rest if any
-  spi_end();
+  fillRect(x, y, 1, h, color);
 };
 
 
 void ILI9341_ESP32::drawFastHLine(uint16_t x, uint16_t y, uint16_t w, uint16_t color){
-  uint8_t buf[64];                                                              //ESP32 can send 64 Bytes at once ... makes 32 pixel @ 16 Bit color
-  for(uint8_t i=0; i<64; i+=2){                                                 //Fill buffer. We don't take care if the line is smaller than this buffe
-      buf[i]=color>>8;                                                          //...maybe we should take care later
-      buf[i+1]=color;
-  }
-  spi_begin();
-  setAddrWindow(x,y,w-1,y+1);
-  digitalWrite(pin_dc, HIGH);
-  while(w>=32){
-    SPI.writeBytes(buf, 64);
-    w-=32;
-  };
-  if(w>0)SPI.writeBytes(buf, w*2);       //write rest if any
-  spi_end();
+  fillRect(x, y, w, 1, color);
 };
 
 
+void ILI9341_ESP32::drawLine(uint16_t x, uint16_t y, uint16_t x2, uint16_t y2,  uint16_t color){
+
+};
+
+
+/**
+
+--------------- drawing figures ---------------
+
+**/
+
 
 void ILI9341_ESP32::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color){
-  uint8_t buf[64];     //ESP32 can send 64 Bytes at once ... makes 32 pixel @ 16 Bit color
-  uint32_t ptw = (w*h);
-  for(uint8_t i=0; i<64; i+=2){
-      buf[i]=color>>8;
-      buf[i+1]=color;
+  for(uint8_t i=0; i<64; i+=2){                                                 //Fill buffer. We don't take care if the line is smaller than this buffe
+      buf[i]=color>>8;                                                          //...maybe we should take care later
+      buf[i+1]=color;                                                           //...and we should also try to avoid this boilerplate code
   }
-
   spi_begin();
   setAddrWindow(x,y,x+w-1,y+h-1);
   digitalWrite(pin_dc, HIGH);
-  //digitalWrite(pin_cs, LOW);
+  drawPixels(w*h);
+  spi_end();
+}
 
-  while(ptw>=32){
-    SPI.writeBytes(buf, 64);
-    ptw-=32;
-  };
-  if(ptw>0)SPI.writeBytes(buf, ptw*2);       //write rest if any
+
+void ILI9341_ESP32::drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color){
+  for(uint8_t i=0; i<64; i+=2){                                                 //Fill buffer. We don't take care if the line is smaller than this buffe
+      buf[i]=color>>8;                                                          //...maybe we should take care later
+      buf[i+1]=color;                                                           //...and we should also try to avoid this boilerplate code
+  }
+  spi_begin();
+
+  //draw top line
+  setAddrWindow(x,y,x+w-1,y+1);
+  digitalWrite(pin_dc, HIGH);
+  drawPixels(w);
+
+  //draw right line
+  setAddrWindow(x+w,y+1,x+w+1,y+h-2);
+  digitalWrite(pin_dc, HIGH);
+  drawPixels(h);
+
+  //draw bottom line
+  setAddrWindow(x,y+h-2,x+w-1,y+1);
+  digitalWrite(pin_dc, HIGH);
+  drawPixels(w);
+
+  //draw right line
+  setAddrWindow(x,y+1,x+1,y+h-2);
+  digitalWrite(pin_dc, HIGH);
+  drawPixels(h);
 
   spi_end();
-
-  //digitalWrite(pin_cs, HIGH);
-
 }
 
 
