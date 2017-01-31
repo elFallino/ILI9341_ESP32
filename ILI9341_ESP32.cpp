@@ -260,7 +260,7 @@ void ILI9341_ESP32::drawFastHLine(uint16_t x, uint16_t y, uint16_t w, uint16_t c
 };
 
 
-/*
+
 void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,  uint16_t color){
   uint16_t steep = abs(y2-y1) > abs(x2 - x1);
 
@@ -309,9 +309,9 @@ void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,
     pxlen>1?fillRect(x1-pxlen,y1, pxlen, 1, color):drawPixel(x1-pxlen,y1, color);
     //fillRect(x1-pxlen,y1, pxlen, 1, color);     //write whats left
   }
-*/
 
 
+/*
   void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,  uint16_t color){
     uint16_t steep = abs(y2-y1) > abs(x2 - x1);
 
@@ -364,7 +364,7 @@ void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,
       setAddrWindow(x1-pxlen, y1, x1-1, y1);
     drawPixels(pxlen);
   }
-
+*/
 
 /**
 
@@ -372,6 +372,9 @@ void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,
 
 **/
 
+void ILI9341_ESP32::fillScreen(uint16_t color){
+  fillRect(0, 0, _width, _height, color);
+}
 
 void ILI9341_ESP32::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color){
   for(uint8_t i=0; i<64; i+=2){                                                 //Fill buffer. We don't take care if the line is smaller than this buffe
@@ -440,5 +443,26 @@ void ILI9341_ESP32::setRotation(uint8_t m) {
      _height = TFT_WIDTH;
      break;
   }
+  SPI_END
+}
+
+/**
+* returns the width of the display dpending on the current rotation
+**/
+uint16_t ILI9341_ESP32::width(){
+  return _width;
+}
+
+/**
+* returns the height of the display dpending on the current rotation
+**/
+uint16_t ILI9341_ESP32::height() {
+  return _height;
+}
+
+
+void ILI9341_ESP32::invertDisplay(bool invert) {
+  SPI_BEGIN
+  writeCommand(invert ? ILI9341_INVON : ILI9341_INVOFF);
   SPI_END
 }
