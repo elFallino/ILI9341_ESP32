@@ -3,34 +3,35 @@
 #include "SPI.h"
 #include "Arduino.h"
 
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
 
-static inline void spi_begin(void) __attribute__((always_inline));
-static inline void spi_begin(void) { SPI.beginTransaction(SPISettings(80000000, MSBFIRST, SPI_MODE0)); };             //NOTE: found some notes in google that most ILI9341 can handle that speed when only receiving data. Not checked if this speed is really applied.
-static inline void spi_end(void) __attribute__((always_inline));
-static inline void spi_end(void) {};
+#ifndef _swap_uint16_t
+#define _swap_uint16_t(a, b) { uint16_t t = a; a = b; b = t; }
+#endif
+
+
+
+#define SPI_BEGIN SPI.beginTransaction(SPISettings(_busFrequency, MSBFIRST, SPI_MODE0));              //NOTE: found some notes in google that most ILI9341 can handle that speed when only receiving data. Not checked if this speed is really applied.
+#define SPI_END //SPI.endTransaction();   //SPI.endTransaction does nothing - thats why we don' use it
 
 
 void ILI9341_ESP32::writeCommand(uint8_t command) {
   digitalWrite(pin_dc, LOW);
   digitalWrite(pin_clk, LOW);
-//  digitalWrite(pin_cs, LOW);
   SPI.write(command);
-//  digitalWrite(pin_cs, HIGH);
 }
 
 
 void ILI9341_ESP32::writeData(uint8_t * data, size_t length){
   digitalWrite(pin_dc, HIGH);
-  //digitalWrite(pin_cs, LOW);
   SPI.writeBytes(data, length);
-  //digitalWrite(pin_cs, HIGH);
 };
 
 void ILI9341_ESP32::writeData(uint8_t data){
   digitalWrite(pin_dc, HIGH);
-  //digitalWrite(pin_cs, LOW);
   SPI.write(data);
-  //digitalWrite(pin_cs, HIGH);
 };
 
 
@@ -45,6 +46,7 @@ ILI9341_ESP32::ILI9341_ESP32(int8_t mosi, int8_t miso, int8_t clk, int8_t cs, in
   rotation = 0;
   _width   = TFT_WIDTH;
   _height  = TFT_HEIGHT;
+  _busFrequency = 1000000;       //Use 1MHz as initial value - ESP32 can do up to 80MHz
 }
 
 
@@ -55,7 +57,7 @@ void ILI9341_ESP32::begin(){
   }
 
   pinMode(pin_dc, OUTPUT);
-  pinMode(pin_cs, OUTPUT);
+  //pinMode(pin_cs, OUTPUT);
 
   SPI.begin(pin_clk, pin_miso, pin_mosi, pin_cs);  //sck, miso, mosi, ss
 
@@ -70,7 +72,7 @@ void ILI9341_ESP32::begin(){
   }
 
 
-  spi_begin();
+  SPI_BEGIN
 
   writeCommand(0xEF);
   writeData(0x03);
@@ -121,7 +123,7 @@ void ILI9341_ESP32::begin(){
   writeData(0x86);  //--
 
   writeCommand(ILI9341_MADCTL);    // Memory Access Control
-  writeData(0x58);//writeData(0x48);                                            //Note: Set Bit 5 to enable line wrap when page end is reached. Used for very fast writing of Bitmaps
+  writeData(0x48);//writeData(0x58);                                            //Note: Set Bit 5 to enable line wrap when page end is reached. Used for very fast writing of Bitmaps
 
   writeCommand(ILI9341_PIXFMT);     //Set pixel format
   writeData(0x55);                  //0x55= 16 Bit Pixel
@@ -176,13 +178,19 @@ void ILI9341_ESP32::begin(){
   writeData(0x0F);
 
   writeCommand(ILI9341_SLPOUT);    //Exit Sleep
-  spi_end();
+  SPI_END
   delay(120);
-  spi_begin();
+  SPI_BEGIN
   writeCommand(ILI9341_DISPON);    //Display on
-  spi_end();
+  SPI_END
 };
 
+
+
+void ILI9341_ESP32::begin(uint32_t busFrequency){
+  _busFrequency = busFrequency;
+  begin();
+};
 
 void ILI9341_ESP32::setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1){
   writeCommand(ILI9341_CASET); // Column addr set
@@ -209,11 +217,11 @@ void ILI9341_ESP32::setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_
 
 void ILI9341_ESP32::drawPixel(uint16_t x, uint16_t y, uint16_t color){
   if((x < 0) ||(x >= _width) || (y < 0) || (y >= _height)) return;
-  spi_begin();
+  SPI_BEGIN
   setAddrWindow(x,y,x+1,y+1);
   digitalWrite(pin_dc, HIGH);
   SPI.write16(color);
-  spi_end();
+  SPI_END
 };
 
 
@@ -221,6 +229,7 @@ void ILI9341_ESP32::drawPixel(uint16_t x, uint16_t y, uint16_t color){
 
 
 void ILI9341_ESP32::drawPixels(size_t length){
+  digitalWrite(pin_dc, HIGH);
   while(length>=32){
     SPI.writeBytes(buf, 64);
     length-=32;
@@ -230,7 +239,7 @@ void ILI9341_ESP32::drawPixels(size_t length){
 
 
 void ILI9341_ESP32::clearDisplay (){
-  fillRect(0, 0, TFT_WIDTH, TFT_HEIGHT, ILI9341_BLACK);
+  fillRect(0, 0, _width, _height, ILI9341_BLACK);
 }
 
 
@@ -251,9 +260,110 @@ void ILI9341_ESP32::drawFastHLine(uint16_t x, uint16_t y, uint16_t w, uint16_t c
 };
 
 
-void ILI9341_ESP32::drawLine(uint16_t x, uint16_t y, uint16_t x2, uint16_t y2,  uint16_t color){
+/*
+void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,  uint16_t color){
+  uint16_t steep = abs(y2-y1) > abs(x2 - x1);
 
-};
+  if (steep) {
+    _swap_uint16_t(x1, y1);
+    _swap_uint16_t(x2, y2);
+  }
+
+  if (x1 > x2) {
+    _swap_uint16_t(x1, x2);
+    _swap_uint16_t(y1, y2);
+  }
+
+  int16_t dx, dy;
+  dx = x2 - x1;
+  dy = abs(y2 - y1);
+
+  int16_t err = dx / 2;
+  int16_t ystep;
+
+  if (y1 < y2) {
+    ystep = 1;
+  } else {
+    ystep = -1;
+  }
+
+  uint16_t prev_y = y1;
+  uint16_t pxlen = 0;
+  for (; x1<=x2; x1++) {
+    err -= dy;
+    if (err < 0) {
+      if(steep)
+        fillRect(y1, x1-pxlen, 1, pxlen, color);      //than write the previous
+      else
+        pxlen>1?fillRect(x1-pxlen,y1, pxlen, 1, color):drawPixel(x1-pxlen,y1, color);     //than write the previous
+      y1 += ystep;
+      err += dx;
+      pxlen=1;
+    } else {
+      pxlen++;
+    }
+  }
+  if(steep)
+    fillRect(y1, x1-pxlen, 1, pxlen, color);     //write whats left
+  else
+    pxlen>1?fillRect(x1-pxlen,y1, pxlen, 1, color):drawPixel(x1-pxlen,y1, color);
+    //fillRect(x1-pxlen,y1, pxlen, 1, color);     //write whats left
+  }
+*/
+
+
+  void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,  uint16_t color){
+    uint16_t steep = abs(y2-y1) > abs(x2 - x1);
+
+    if (steep) {
+      _swap_uint16_t(x1, y1);
+      _swap_uint16_t(x2, y2);
+    }
+
+    if (x1 > x2) {
+      _swap_uint16_t(x1, x2);
+      _swap_uint16_t(y1, y2);
+    }
+
+    int16_t dx, dy;
+    dx = x2 - x1;
+    dy = abs(y2 - y1);
+
+    int16_t err = dx / 2;
+    int16_t ystep;
+
+    if (y1 < y2) {
+      ystep = 1;
+    } else {
+      ystep = -1;
+    }
+
+
+    uint16_t pxlen = 0;
+    SPI_BEGIN
+    for (; x1<=x2; x1++) {
+      err -= dy;
+      if (err < 0) {
+        if(steep)
+          setAddrWindow(y1, x1-pxlen, y1+pxlen, x1-pxlen);
+        else
+          setAddrWindow(x1-pxlen, y1, x1-1, y1);
+        drawPixels(pxlen);
+        y1 += ystep;
+        err += dx;
+        pxlen=1;
+      } else {
+        pxlen++;
+      }
+    }
+    SPI_END
+
+    if(steep)
+      setAddrWindow(y1, x1-pxlen, y1+pxlen, x1-pxlen);
+    else
+      setAddrWindow(x1-pxlen, y1, x1-1, y1);
+    drawPixels(pxlen);
+  }
 
 
 /**
@@ -268,11 +378,10 @@ void ILI9341_ESP32::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uin
       buf[i]=color>>8;                                                          //...maybe we should take care later
       buf[i+1]=color;                                                           //...and we should also try to avoid this boilerplate code
   }
-  spi_begin();
+  SPI_BEGIN
   setAddrWindow(x,y,x+w-1,y+h-1);
-  digitalWrite(pin_dc, HIGH);
   drawPixels(w*h);
-  spi_end();
+  SPI_END
 }
 
 
@@ -281,36 +390,32 @@ void ILI9341_ESP32::drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uin
       buf[i]=color>>8;                                                          //...maybe we should take care later
       buf[i+1]=color;                                                           //...and we should also try to avoid this boilerplate code
   }
-  spi_begin();
+  SPI_BEGIN
 
   //draw top line
   setAddrWindow(x,y,x+w-1,y+1);
-  digitalWrite(pin_dc, HIGH);
   drawPixels(w);
 
   //draw right line
   setAddrWindow(x+w,y+1,x+w+1,y+h-2);
-  digitalWrite(pin_dc, HIGH);
   drawPixels(h);
 
   //draw bottom line
   setAddrWindow(x,y+h-2,x+w-1,y+1);
-  digitalWrite(pin_dc, HIGH);
   drawPixels(w);
 
   //draw right line
   setAddrWindow(x,y+1,x+1,y+h-2);
-  digitalWrite(pin_dc, HIGH);
   drawPixels(h);
 
-  spi_end();
+  SPI_END
 }
 
 
 
 void ILI9341_ESP32::setRotation(uint8_t m) {
 
-  spi_begin();
+  SPI_BEGIN
   writeCommand(ILI9341_MADCTL);
   rotation = m % 4; // can't be higher than 3
   switch (rotation) {
@@ -335,5 +440,5 @@ void ILI9341_ESP32::setRotation(uint8_t m) {
      _height = TFT_WIDTH;
      break;
   }
-  spi_end();
+  SPI_END
 }
