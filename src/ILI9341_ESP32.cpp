@@ -1,42 +1,49 @@
 #include "ILI9341_ESP32.h"
-#include "ILI9341_ESP32_commands.h"
 #include "SPI.h"
 #include "Arduino.h"
+#include <pgmspace.h>
+#include "gfxfont.h"
+#include "glcdfont.c"	//default fonts
 
 #ifndef min
-#define min(a,b) (((a) < (b)) ? (a) : (b))
+  #define min(a,b) (((a) < (b)) ? (a) : (b))
 #endif
 
 #ifndef _swap_int16_t
-#define _swap_int16_t(a, b) { uint16_t t = a; a = b; b = t; }
+  #define _swap_int16_t(a, b) { uint16_t t = a; a = b; b = t; }
 #endif
 
+#if !defined(__INT_MAX__) || (__INT_MAX__ > 0xFFFF)
+ #define pgm_read_pointer(addr) ((void *)pgm_read_dword(addr))
+#else
+ #define pgm_read_pointer(addr) ((void *)pgm_read_word(addr))
+#endif
 
-/*
-static inline void spi_begin(void) __attribute__((always_inline));
-static inline void spi_begin(void) { SPI.beginTransaction(SPISettings(80000000, MSBFIRST, SPI_MODE0)); };             //NOTE: found some notes in google that most ILI9341 can handle that speed when only receiving data. Not checked if this speed is really applied.
-static inline void spi_end(void) __attribute__((always_inline));
-static inline void spi_end(void) {};
-*/
 
 #define SPI_BEGIN SPI.beginTransaction(SPISettings(_busFrequency, MSBFIRST, SPI_MODE0));
 #define SPI_END
 
 void ILI9341_ESP32::_writeCommand(uint8_t command) {
+  //digitalWrite(pin_cs, LOW);
   digitalWrite(pin_dc, LOW);
   digitalWrite(pin_clk, LOW);
   SPI.write(command);
+  //digitalWrite(pin_cs, HIGH);
 }
 
 
 void ILI9341_ESP32::_writeData(uint8_t * data, size_t length){
+  //digitalWrite(pin_cs, LOW);
   digitalWrite(pin_dc, HIGH);
   SPI.writeBytes(data, length);
+  //digitalWrite(pin_cs, HIGH);
 };
 
 void ILI9341_ESP32::_writeData(uint8_t data){
+  //digitalWrite(pin_cs, LOW);
   digitalWrite(pin_dc, HIGH);
   SPI.write(data);
+  //digitalWrite(pin_cs, HIGH);
 };
 
 
@@ -48,10 +55,19 @@ ILI9341_ESP32::ILI9341_ESP32(int8_t mosi, int8_t miso, int8_t clk, int8_t cs, in
   pin_dc   = dc;
   pin_reset= reset;
 
-  rotation = 0;
+  _rotation = 0;
   _width   = TFT_WIDTH;
   _height  = TFT_HEIGHT;
   _busFrequency=20000000;
+
+  cursor_y  = 0;
+  cursor_x  = 0;
+  textsize  = 1;
+  textcolor = ILI9341_WHITE;
+  textbgcolor = ILI9341_BLACK;
+  _wrap      = true;
+  _cp437    = false;
+  gfxFont   = NULL;
 }
 
 
@@ -62,10 +78,10 @@ void ILI9341_ESP32::begin(){
   }
 
   pinMode(pin_dc, OUTPUT);
-  pinMode(pin_cs, OUTPUT);
+  //pinMode(pin_cs, OUTPUT);
 
   SPI.begin(pin_clk, pin_miso, pin_mosi, pin_cs);  //sck, miso, mosi, ss
-
+  SPI.setHwCs(true);
   // toggle RST low to reset
   if (pin_reset > 0) {
     digitalWrite(pin_reset, HIGH);
@@ -372,6 +388,7 @@ void ILI9341_ESP32::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uin
   _drawPixels(w*h);
   SPI_END
 }
+
 
 /*
   draws a circle (outline only)
@@ -803,15 +820,19 @@ void ILI9341_ESP32::drawXBitmap(int16_t x, int16_t y, const uint8_t *bitmap, int
 
 *******************************************************************************/
 
+uint16_t ILI9341_ESP32::color565(uint8_t r, uint8_t g, uint8_t b) {
+  return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+}
+
 
 /*
-  set rotation of screen in 90deg steps (0=0deg, 1=90deg, 2 = 180deg, 3 = 270deg)
+  set _rotation of screen in 90deg steps (0=0deg, 1=90deg, 2 = 180deg, 3 = 270deg)
 */
 void ILI9341_ESP32::setRotation(uint8_t m) {
   SPI_BEGIN
   _writeCommand(ILI9341_MADCTL);
-  rotation = m % 4; // can't be higher than 3
-  switch (rotation) {
+  _rotation = m % 4; // can't be higher than 3
+  switch (_rotation) {
    case 0:
      _writeData(MADCTL_MX | MADCTL_BGR);
      _width  = TFT_WIDTH;
@@ -848,15 +869,324 @@ void ILI9341_ESP32::invertDisplay(bool invert) {
 
 
 /*
-  returns the width of the display dpending on the current rotation
+  returns the width of the display dpending on the current _rotation
 */
 uint16_t ILI9341_ESP32::width(){ return _width; };
 
 
 /*
-  returns the height of the display dpending on the current rotation
+  returns the height of the display dpending on the current _rotation
 */
 uint16_t ILI9341_ESP32::height() { return _height; };
+
+
+uint8_t ILI9341_ESP32::getRotation(void) const {
+  return _rotation;
+};
+int16_t ILI9341_ESP32::getCursorX(void) const{
+  return cursor_x;
+};
+int16_t ILI9341_ESP32::getCursorY(void) const{
+  return cursor_y;
+};
+/*******************************************************************************
+
+---------- text functions ----------
+
+*******************************************************************************/
+
+void ILI9341_ESP32::setCursor(int16_t x, int16_t y) {
+  cursor_x = x;
+  cursor_y = y;
+}
+
+
+void ILI9341_ESP32::setTextColor(uint16_t color) {
+  // For 'transparent' background, we'll set the bg
+  // to the same as fg instead of using a flag
+  textcolor = textbgcolor = color;
+};
+
+
+
+void ILI9341_ESP32::setTextColor(uint16_t color, uint16_t bgcolor) {
+  textcolor = color;
+  textbgcolor = bgcolor;
+};
+
+
+
+void ILI9341_ESP32::cp437(bool x){
+  _cp437=x;
+}
+
+
+void ILI9341_ESP32::setTextWrap(bool wrap) {
+  _wrap=wrap;
+}
+
+
+void ILI9341_ESP32::setTextSize(uint8_t s) {
+  textsize = (s > 0) ? s : 1;
+}
+
+
+void ILI9341_ESP32::setFont(const GFXfont *f) {
+  if(f) {          // Font struct pointer passed in?
+    if(!gfxFont) { // And no current font struct?
+      // Switching from classic to new font behavior.
+      // Move cursor pos down 6 pixels so it's on baseline.
+      cursor_y += 6;
+    }
+  } else if(gfxFont) { // NULL passed.  Current font struct defined?
+    // Switching from new to classic font behavior.
+    // Move cursor pos up 6 pixels so it's at top-left of char.
+    cursor_y -= 6;
+  }
+  gfxFont = (GFXfont *)f;
+}
+
+
+size_t ILI9341_ESP32::write(uint8_t c) {
+  SPI_BEGIN
+  if(!gfxFont) { // 'Classic' built-in font
+
+    if(c == '\n') {
+      cursor_y += textsize*8;
+      cursor_x  = 0;
+    } else if(c == '\r') {
+      // skip em
+    } else {
+      if(_wrap && ((cursor_x + textsize * 6) >= _width)) { // Heading off edge?
+        cursor_x  = 0;            // Reset x to zero
+        cursor_y += textsize * 8; // Advance y one line
+      }
+      _drawChar(cursor_x, cursor_y, c, textcolor, textbgcolor, textsize);
+      cursor_x += textsize * 6;
+    }
+
+  } else { // Custom font
+
+    if(c == '\n') {
+      cursor_x  = 0;
+      cursor_y += (int16_t)textsize *
+                  (uint8_t)pgm_read_byte(&gfxFont->yAdvance);
+    } else if(c != '\r') {
+      uint8_t first = pgm_read_byte(&gfxFont->first);
+      if((c >= first) && (c <= (uint8_t)pgm_read_byte(&gfxFont->last))) {
+        uint8_t   c2    = c - pgm_read_byte(&gfxFont->first);
+        GFXglyph *glyph = &(((GFXglyph *)pgm_read_pointer(&gfxFont->glyph))[c2]);
+        uint8_t   w     = pgm_read_byte(&glyph->width),
+                  h     = pgm_read_byte(&glyph->height);
+        if((w > 0) && (h > 0)) { // Is there an associated bitmap?
+          int16_t xo = (int8_t)pgm_read_byte(&glyph->xOffset); // sic
+          if(_wrap && ((cursor_x + textsize * (xo + w)) >= _width)) {
+            // Drawing character would go off right edge; wrap to new line
+            cursor_x  = 0;
+            cursor_y += (int16_t)textsize *
+                        (uint8_t)pgm_read_byte(&gfxFont->yAdvance);
+          }
+          _drawChar(cursor_x, cursor_y, c, textcolor, textbgcolor, textsize);
+        }
+        cursor_x += pgm_read_byte(&glyph->xAdvance) * (int16_t)textsize;
+      }
+    }
+
+  }
+  SPI_END
+  return 1;
+}
+
+void ILI9341_ESP32::drawChar(int16_t x, int16_t y, unsigned char c,
+ uint16_t color, uint16_t bg, uint8_t size) {
+   SPI_BEGIN
+   _drawChar(x,y,c,color, bg, size);
+   SPI_END
+ };
+
+
+ /*
+   get the boundaries of a given text
+   this function is a modified copy taken from Adafruit_GFX
+ */
+ void ILI9341_ESP32::getTextBounds(char *str, int16_t x, int16_t y, int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h){
+   uint8_t c; // Current character
+
+*x1 = x;
+*y1 = y;
+*w  = *h = 0;
+
+if(gfxFont) {
+
+  GFXglyph *glyph;
+  uint8_t   first = pgm_read_byte(&gfxFont->first),
+            last  = pgm_read_byte(&gfxFont->last),
+            gw, gh, xa;
+  int8_t    xo, yo;
+  int16_t   minx = _width, miny = _height, maxx = -1, maxy = -1,
+            gx1, gy1, gx2, gy2, ts = (int16_t)textsize,
+            ya = ts * (uint8_t)pgm_read_byte(&gfxFont->yAdvance);
+
+  while((c = *str++)) {
+    if(c != '\n') { // Not a newline
+      if(c != '\r') { // Not a carriage return, is normal char
+        if((c >= first) && (c <= last)) { // Char present in current font
+          c    -= first;
+          glyph = &(((GFXglyph *)pgm_read_pointer(&gfxFont->glyph))[c]);
+          gw    = pgm_read_byte(&glyph->width);
+          gh    = pgm_read_byte(&glyph->height);
+          xa    = pgm_read_byte(&glyph->xAdvance);
+          xo    = pgm_read_byte(&glyph->xOffset);
+          yo    = pgm_read_byte(&glyph->yOffset);
+          if(_wrap && ((x + (((int16_t)xo + gw) * ts)) >= _width)) {
+            // Line wrap
+            x  = 0;  // Reset x to 0
+            y += ya; // Advance y by 1 line
+          }
+          gx1 = x   + xo * ts;
+          gy1 = y   + yo * ts;
+          gx2 = gx1 + gw * ts - 1;
+          gy2 = gy1 + gh * ts - 1;
+          if(gx1 < minx) minx = gx1;
+          if(gy1 < miny) miny = gy1;
+          if(gx2 > maxx) maxx = gx2;
+          if(gy2 > maxy) maxy = gy2;
+          x += xa * ts;
+        }
+      } // Carriage return = do nothing
+    } else { // Newline
+      x  = 0;  // Reset x
+      y += ya; // Advance y by 1 line
+    }
+  }
+  // End of string
+  *x1 = minx;
+  *y1 = miny;
+  if(maxx >= minx) *w  = maxx - minx + 1;
+  if(maxy >= miny) *h  = maxy - miny + 1;
+
+} else { // Default font
+
+  uint16_t lineWidth = 0, maxWidth = 0; // Width of current, all lines
+
+  while((c = *str++)) {
+    if(c != '\n') { // Not a newline
+      if(c != '\r') { // Not a carriage return, is normal char
+        if(_wrap && ((x + textsize * 6) >= _width)) {
+          x  = 0;            // Reset x to 0
+          y += textsize * 8; // Advance y by 1 line
+          if(lineWidth > maxWidth) maxWidth = lineWidth; // Save widest line
+          lineWidth  = textsize * 6; // First char on new line
+        } else { // No line wrap, just keep incrementing X
+          lineWidth += textsize * 6; // Includes interchar x gap
+        }
+      } // Carriage return = do nothing
+    } else { // Newline
+      x  = 0;            // Reset x to 0
+      y += textsize * 8; // Advance y by 1 line
+      if(lineWidth > maxWidth) maxWidth = lineWidth; // Save widest line
+      lineWidth = 0;     // Reset lineWidth for new line
+    }
+  }
+  // End of string
+  if(lineWidth) y += textsize * 8; // Add height of last (or only) line
+  *w = maxWidth - 1;               // Don't include last interchar x gap
+  *h = y - *y1;
+
+  } // End classic vs custom font
+};
+
+
+/*
+  get the boundaries of a given text
+  this function is a modified copy taken from Adafruit_GFX
+*/
+ void ILI9341_ESP32::getTextBounds(const __FlashStringHelper *str, int16_t x, int16_t y, int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h) {
+   uint8_t *s = (uint8_t *)str, c;
+
+  *x1 = x;
+  *y1 = y;
+  *w  = *h = 0;
+
+  if(gfxFont) {
+
+    GFXglyph *glyph;
+    uint8_t   first = pgm_read_byte(&gfxFont->first),
+              last  = pgm_read_byte(&gfxFont->last),
+              gw, gh, xa;
+    int8_t    xo, yo;
+    int16_t   minx = _width, miny = _height, maxx = -1, maxy = -1,
+              gx1, gy1, gx2, gy2, ts = (int16_t)textsize,
+              ya = ts * (uint8_t)pgm_read_byte(&gfxFont->yAdvance);
+
+    while((c = pgm_read_byte(s++))) {
+      if(c != '\n') { // Not a newline
+        if(c != '\r') { // Not a carriage return, is normal char
+          if((c >= first) && (c <= last)) { // Char present in current font
+            c    -= first;
+            glyph = &(((GFXglyph *)pgm_read_pointer(&gfxFont->glyph))[c]);
+            gw    = pgm_read_byte(&glyph->width);
+            gh    = pgm_read_byte(&glyph->height);
+            xa    = pgm_read_byte(&glyph->xAdvance);
+            xo    = pgm_read_byte(&glyph->xOffset);
+            yo    = pgm_read_byte(&glyph->yOffset);
+            if(_wrap && ((x + (((int16_t)xo + gw) * ts)) >= _width)) {
+              // Line wrap
+              x  = 0;  // Reset x to 0
+              y += ya; // Advance y by 1 line
+            }
+            gx1 = x   + xo * ts;
+            gy1 = y   + yo * ts;
+            gx2 = gx1 + gw * ts - 1;
+            gy2 = gy1 + gh * ts - 1;
+            if(gx1 < minx) minx = gx1;
+            if(gy1 < miny) miny = gy1;
+            if(gx2 > maxx) maxx = gx2;
+            if(gy2 > maxy) maxy = gy2;
+            x += xa * ts;
+          }
+        } // Carriage return = do nothing
+      } else { // Newline
+        x  = 0;  // Reset x
+        y += ya; // Advance y by 1 line
+      }
+    }
+    // End of string
+    *x1 = minx;
+    *y1 = miny;
+    if(maxx >= minx) *w  = maxx - minx + 1;
+    if(maxy >= miny) *h  = maxy - miny + 1;
+
+  } else { // Default font
+
+    uint16_t lineWidth = 0, maxWidth = 0; // Width of current, all lines
+
+    while((c = pgm_read_byte(s++))) {
+      if(c != '\n') { // Not a newline
+        if(c != '\r') { // Not a carriage return, is normal char
+          if(_wrap && ((x + textsize * 6) >= _width)) {
+            x  = 0;            // Reset x to 0
+            y += textsize * 8; // Advance y by 1 line
+            if(lineWidth > maxWidth) maxWidth = lineWidth; // Save widest line
+            lineWidth  = textsize * 6; // First char on new line
+          } else { // No line wrap, just keep incrementing X
+            lineWidth += textsize * 6; // Includes interchar x gap
+          }
+        } // Carriage return = do nothing
+      } else { // Newline
+        x  = 0;            // Reset x to 0
+        y += textsize * 8; // Advance y by 1 line
+        if(lineWidth > maxWidth) maxWidth = lineWidth; // Save widest line
+        lineWidth = 0;     // Reset lineWidth for new line
+      }
+    }
+    // End of string
+    if(lineWidth) y += textsize * 8; // Add height of last (or only) line
+    *w = maxWidth - 1;               // Don't include last interchar x gap
+    *h = y - *y1;
+
+  } // End classic vs custom font
+ };
 
 
 /*******************************************************************************
@@ -864,6 +1194,92 @@ uint16_t ILI9341_ESP32::height() { return _height; };
 ---------- private functions ----------
 
 *******************************************************************************/
+
+
+void ILI9341_ESP32::_drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bgcolor, uint8_t size){
+  if(!gfxFont && color!=bgcolor) {
+    fillRect(x,y-1,6*size,8*size,bgcolor);    //draw a BG behind text if wished. Only suitable for non-GFX fonts
+  }
+
+    _fillBuff(color);
+
+    if(!gfxFont) { // 'Classic' built-in font
+
+      if((x >= _width)            || // Clip right
+         (y >= _height)           || // Clip bottom
+         ((x + 6 * size - 1) < 0) || // Clip left
+         ((y + 8 * size - 1) < 0))   // Clip top
+        return;
+
+      if(!_cp437 && (c >= 176)) c++; // Handle 'classic' charset behavior
+      uint32_t pxlen = 0; //count the pixels that can be drawn at once
+
+      for(int8_t i=0; i<6; i++ ) {        //X part
+        uint8_t line;
+        if(i < 5) line = pgm_read_byte(font+(c*5)+i);
+        else      line = 0x0;
+
+        for(int8_t j=0; j<8; j++, line >>= 1) {   //Y part
+
+          if(line & 0x1) {
+            if(pxlen==0)                                                              //change from low to high
+              _setAddrWindow(x+(i*size), y+(j*size), x+(i*size)+size-1, y+(j*size)+((7-j)*size));                                 //set new adress window
+            pxlen+=size*size;
+          } else {
+            if(pxlen>0) {                                                             //change from high to low
+              _drawPixels(pxlen);                                                      //draw pixels
+              pxlen=0;
+            }
+          }
+        }
+      }
+
+    } else { // Custom font
+
+      // Character is assumed previously filtered by write() to eliminate
+      // newlines, returns, non-printable characters, etc.  Calling drawChar()
+      // directly with 'bad' characters of font may cause mayhem!
+
+      c -= pgm_read_byte(&gfxFont->first);
+      GFXglyph *glyph  = &(((GFXglyph *)pgm_read_pointer(&gfxFont->glyph))[c]);
+      uint8_t  *bitmap = (uint8_t *)pgm_read_pointer(&gfxFont->bitmap);
+
+      uint16_t bo = pgm_read_word(&glyph->bitmapOffset);
+      uint8_t  w  = pgm_read_byte(&glyph->width),
+               h  = pgm_read_byte(&glyph->height);
+      int16_t xo = (int8_t)pgm_read_byte(&glyph->xOffset),
+              yo = (int8_t)pgm_read_byte(&glyph->yOffset);
+      uint8_t  xx, yy, bits, bit = 0;
+
+
+      // Todo: Add character clipping here
+
+      // NOTE: THERE IS NO 'BACKGROUND' COLOR OPTION ON CUSTOM FONTS.
+      // THIS IS ON PURPOSE AND BY DESIGN.  The background color feature
+      // has typically been used with the 'classic' font to overwrite old
+      // screen contents with new data.  This ONLY works because the
+      // characters are a uniform size; it's not a sensible thing to do with
+      // proportionally-spaced fonts with glyphs of varying sizes (and that
+      // may overlap).  To replace previously-drawn text when using a custom
+      // font, use the getTextBounds() function to determine the smallest
+      // rectangle encompassing a string, erase the area with fillRect(),
+      // then draw new text.  This WILL infortunately 'blink' the text, but
+      // is unavoidable.  Drawing 'background' pixels will NOT fix this,
+      // only creates a new set of problems.
+      for(yy=0; yy<h; yy++) {
+        for(xx=0; xx<w; xx++) {
+          if(!(bit++ & 7)) {
+            bits = pgm_read_byte(&bitmap[bo++]);
+          }
+          if(bits & 0x80) {
+            _setAddrWindow(x+(xo+xx)*size, y+(yo+yy)*size, (x+(xo+xx)*size)+size-1, (y+(yo+yy)*size)+size-1 );
+            _drawPixels(size*size);
+          }
+          bits <<= 1;
+        }//x
+      }//y
+    } // End classic vs custom font
+}
 
 
 /*
@@ -874,4 +1290,34 @@ void ILI9341_ESP32::_fillBuff(uint16_t color) {
       buf[i]=color>>8;                                                          //...maybe we should take care later
       buf[i+1]=color;
   }
+}
+
+
+
+
+/*
+  Sends a command and reads the answear
+
+  ToDo: should be reworked completely, but didn't gt it working using _writeCommand and _writeData
+*/
+uint8_t ILI9341_ESP32::readcommand8(uint8_t c, uint8_t index) {
+   SPI_BEGIN
+   digitalWrite(pin_dc, LOW); // command
+   digitalWrite(pin_cs, LOW);
+   SPI.write(0xD9);  // woo sekret command?
+   digitalWrite(pin_dc, HIGH); // data
+   SPI.write(0x10 + index);
+   digitalWrite(pin_cs, HIGH);
+   digitalWrite(pin_cs, HIGH);
+
+   digitalWrite(pin_dc, LOW);
+   digitalWrite(pin_clk, LOW);
+   digitalWrite(pin_cs, LOW);
+   SPI.write(c);
+
+   digitalWrite(pin_dc, HIGH);
+   uint8_t r = SPI.transfer(0x00);
+   digitalWrite(pin_cs, HIGH);
+   SPI_END
+   return r;
 }
