@@ -15,17 +15,17 @@ If you find a bug or think that there are things that can be done smarter, faste
 
 ## Speed comparison
 
-| Benchmark | this driver | Adafruits driver with disabled HAL-Locks and HW-SPI |
+| Benchmark | this driver | this driver with HAL-Locks disabled | Adafruits driver with disabled HAL-Locks and HW-SPI |
 | --- | --- | --- | --- |
-| Screen Fill             |     189517 |   662772 (slower) |
-| Text                    |     131489 |    51971 (faster) |
-| Lines                   |    1296059 |   511414 (faster) |
-| Horz/Vert Lines         |      27391 |    55201 (slower) |
-| Rectangles (outline)    |      25048 |    35831 (slower) |
-| Rectangles (filled)     |     397414 |  1376127 (slower) |
-| Circles (filled)        |     580863 |   235643 (faster) |
-| Circles (outline)       |    1310896 |   223025 (faster) |
-| Triangles (outline)     |     282804 |   162235 (faster) |
-| Triangles (filled)      |     444575 |   470071 (slower) |
-| Rounded Rects (outline) |     351972 |    91688 (faster) |
-| Rounded Rects (filled)  | 4277669007 |  1513809 (faster or meas. error) |
+| Screen Fill             |     189517 |  104663 (faster) |   662772 (slower) |
+| Text                    |     131489 |   18164 (faster) |    51971 (faster) |
+| Lines                   |    1296059 |  165026 (faster) |   511414 (faster) |
+| Horz/Vert Lines         |      27391 |    9838 (faster) |    55201 (slower) |
+| Rectangles (outline)    |      25048 |    7080 (faster) |    35831 (slower) |
+| Rectangles (filled)     |     397414 |  217632 (faster) |  1376127 (slower) |
+| Circles (filled)        |     580863 |   92284 (faster) |   235643 (faster) |
+| Circles (outline)       |    1310896 |  161740 (faster) |   223025 (faster) |
+| Triangles (outline)     |     282804 |   36727 (faster) |   162235 (faster) |
+| Triangles (filled)      |     444575 |  104659 (faster) |   470071 (slower) |
+| Rounded Rects (outline) |     351972 |   46544 (faster) |    91688 (faster) |
+| Rounded Rects (filled)  | 4277669007 |  258489 (faster) |  1513809 (faster) |
