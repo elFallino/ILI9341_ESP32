@@ -175,7 +175,6 @@ class ILI9341_ESP32 : public Print {
       void _fillCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, int16_t delta, uint16_t color);
       void _drawCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, uint16_t color);
       void _drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bgcolor, uint8_t size);
-
 };
 
 #endif

@@ -33,18 +33,27 @@ void ILI9341_ESP32::_writeCommand(uint8_t command) {
 
 
 void ILI9341_ESP32::_writeData(uint8_t * data, size_t length){
-  //digitalWrite(pin_cs, LOW);
+
   digitalWrite(pin_dc, HIGH);
+  if(length==1){
+    SPI.write(data[0]);
+  } else if(length==2){
+    SPI.write16((uint16_t)data[0]<<8 | data[1]);
+  } else if(length==3){
+    SPI.write16((uint16_t)data[0]<<8 | data[1]);
+    SPI.write(data[3]);
+  } else if(length==4){
+    SPI.write32((uint32_t)data[0]<<24 | (uint32_t)data[1]<<16 | (uint32_t)data[2]<<8 | data[3]);
+  } else
   SPI.writeBytes(data, length);
-  //digitalWrite(pin_cs, HIGH);
+
 };
 
 void ILI9341_ESP32::_writeData(uint8_t data){
-  //digitalWrite(pin_cs, LOW);
   digitalWrite(pin_dc, HIGH);
   SPI.write(data);
-  //digitalWrite(pin_cs, HIGH);
 };
+
 
 
 ILI9341_ESP32::ILI9341_ESP32(int8_t mosi, int8_t miso, int8_t clk, int8_t cs, int8_t dc, int8_t reset){
@@ -208,18 +217,14 @@ void ILI9341_ESP32::begin(){
 
 
 void ILI9341_ESP32::_setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1){
+
   _writeCommand(ILI9341_CASET); // Column addr set
-  _writeData((x0 >> 8));
-  _writeData(x0 & 0xFF);
-  _writeData((x1 >> 8));
-  _writeData(x1);    //X0 = XSTART, X1 = XEND
+   digitalWrite(pin_dc, HIGH);
+  SPI.write32(x0 <<16 | x1);
 
   _writeCommand(ILI9341_PASET); // Row addr set
-  _writeData((y0 >> 8));
-  _writeData(y0 & 0xFF);
-  _writeData((y1 >> 8));
-  _writeData(y1);    //Y0 = YSTART, Y1 = YEND
-
+   digitalWrite(pin_dc, HIGH);
+  SPI.write32(y0 <<16 | y1);
   _writeCommand(ILI9341_RAMWR); // write to RAM
 };
 
@@ -245,15 +250,6 @@ void ILI9341_ESP32::drawPixel(uint16_t x, uint16_t y, uint16_t color){
 
 
 
-
-void ILI9341_ESP32::_drawPixels(size_t length){
-  digitalWrite(pin_dc, HIGH);
-  while(length>=32){
-    SPI.writeBytes(buf, 64);
-    length-=32;
-  };
-  if(length>0)SPI.writeBytes(buf, length*2);       //write rest if any
-};
 
 
 
@@ -290,8 +286,8 @@ void ILI9341_ESP32::drawFastHLine(uint16_t x, uint16_t y, uint16_t w, uint16_t c
   draws a line from any given point to another point on screen
 */
 void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,  uint16_t color){
-
     _fillBuff(color);
+
     uint16_t steep = abs(y2-y1) > abs(x2 - x1);
 
     if (steep) {
@@ -318,14 +314,16 @@ void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,
     }
 
     uint16_t pxlen = 0;
+
     SPI_BEGIN
     for (; x1<=x2; x1++) {
       err -= dy;
       if (err < 0) {
-        if(steep)
+        if(steep){
           _setAddrWindow(y1, x1-pxlen, y1, x1-1);
-        else
+        } else {
           _setAddrWindow(x1-pxlen, y1, x1-1, y1);
+        }
         _drawPixels(pxlen);
         y1 += ystep;
         err += dx;
@@ -337,10 +335,11 @@ void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,
     SPI_END
 
     //displaying the rest
-    if(steep)
-      _setAddrWindow(y1, x1-pxlen, y1, x1-1);
-    else
-      _setAddrWindow(x1-pxlen, y1, x1-1, y1);
+    if(steep){
+      _setAddrWindow(y1+1, x1-pxlen, y1+1, x1);
+    } else {
+      _setAddrWindow(x1-pxlen, y1+1, x1-1, y1+1);
+    }
     _drawPixels(pxlen);
   }
 
@@ -1321,3 +1320,15 @@ uint8_t ILI9341_ESP32::readcommand8(uint8_t c, uint8_t index) {
    SPI_END
    return r;
 }
+
+
+
+
+void ILI9341_ESP32::_drawPixels(size_t length){
+  digitalWrite(pin_dc, HIGH);
+  while(length>=32){
+    SPI.writeBytes(buf, 64);
+    length-=32;
+  };
+  if(length>0)SPI.writeBytes(buf, length*2);       //write rest if any
+};
