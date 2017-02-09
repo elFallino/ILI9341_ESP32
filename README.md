@@ -17,15 +17,15 @@ If you find a bug or think that there are things that can be done smarter, faste
 
 | Benchmark | this driver | this driver with HAL-Locks disabled | Adafruits driver with disabled HAL-Locks and HW-SPI |
 | --- | --- | --- | --- |
-| Screen Fill             |     189517 |  104663 (faster) |   662772 (slower) |
-| Text                    |     131489 |   18164 (faster) |    51971 (faster) |
-| Lines                   |    1296059 |  165026 (faster) |   511414 (faster) |
-| Horz/Vert Lines         |      27391 |    9838 (faster) |    55201 (slower) |
-| Rectangles (outline)    |      25048 |    7080 (faster) |    35831 (slower) |
-| Rectangles (filled)     |     397414 |  217632 (faster) |  1376127 (slower) |
-| Circles (filled)        |     580863 |   92284 (faster) |   235643 (faster) |
-| Circles (outline)       |    1310896 |  161740 (faster) |   223025 (faster) |
-| Triangles (outline)     |     282804 |   36727 (faster) |   162235 (faster) |
-| Triangles (filled)      |     444575 |  104659 (faster) |   470071 (slower) |
-| Rounded Rects (outline) |     351972 |   46544 (faster) |    91688 (faster) |
-| Rounded Rects (filled)  | 4277669007 |  258489 (faster) |  1513809 (faster) |
+| Screen Fill             |     189280 |  104626 (faster) |   662772 (slower) |
+| Text                    |      70418 |   12330 (faster) |    51971 (faster) |
+| Lines                   |     667364 |  105083 (faster) |   511414 (faster) |
+| Horz/Vert Lines         |      21896 |    9329 (faster) |    55201 (slower) |
+| Rectangles (outline)    |      17355 |    6336 (faster) |    35831 (slower) |
+| Rectangles (filled)     |     395414 |  217453 (faster) |  1376127 (slower) |
+| Circles (filled)        |     312178 |   66635 (faster) |   235643 (faster) |
+| Circles (outline)       |     675115 |  100625 (faster) |   223025 (faster) |
+| Triangles (outline)     |     147280 |   32708 (faster) |   162235 (slower) |
+| Triangles (filled)      |     303023 |   91075 (faster) |   470071 (slower) |
+| Rounded Rects (outline) |     185902 |   30606 (faster) |    91688 (faster) |
+| Rounded Rects (filled)  |     512880 |  250357 (faster) |  1513809 (slower) |
