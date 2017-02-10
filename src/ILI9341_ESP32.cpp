@@ -24,11 +24,10 @@
 #define SPI_END
 
 void ILI9341_ESP32::_writeCommand(uint8_t command) {
-  //digitalWrite(pin_cs, LOW);
   digitalWrite(pin_dc, LOW);
   digitalWrite(pin_clk, LOW);
   SPI.write(command);
-  //digitalWrite(pin_cs, HIGH);
+
 }
 
 
@@ -44,9 +43,9 @@ void ILI9341_ESP32::_writeData(uint8_t * data, size_t length){
     SPI.write(data[3]);
   } else if(length==4){
     SPI.write32((uint32_t)data[0]<<24 | (uint32_t)data[1]<<16 | (uint32_t)data[2]<<8 | data[3]);
-  } else
-  SPI.writeBytes(data, length);
-
+  } else {
+    SPI.writeBytes(data, length);
+  }
 };
 
 void ILI9341_ESP32::_writeData(uint8_t data){
@@ -56,7 +55,7 @@ void ILI9341_ESP32::_writeData(uint8_t data){
 
 
 
-ILI9341_ESP32::ILI9341_ESP32(int8_t mosi, int8_t miso, int8_t clk, int8_t cs, int8_t dc, int8_t reset){
+ILI9341_ESP32::ILI9341_ESP32(int8_t cs, int8_t dc, int8_t mosi, int8_t clk, int8_t reset, int8_t miso){
   pin_miso = miso;
   pin_mosi = mosi;
   pin_clk  = clk;
@@ -320,9 +319,9 @@ void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,
       err -= dy;
       if (err < 0) {
         if(steep){
-          _setAddrWindow(y1, x1-pxlen, y1, x1-1);
+          _setAddrWindow(y1, x1-(pxlen), y1, x1-1);
         } else {
-          _setAddrWindow(x1-pxlen, y1, x1-1, y1);
+          _setAddrWindow(x1-(pxlen), y1, x1-1, y1);
         }
         _drawPixels(pxlen);
         y1 += ystep;
@@ -336,9 +335,9 @@ void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,
 
     //displaying the rest
     if(steep){
-      _setAddrWindow(y1+1, x1-pxlen, y1+1, x1);
+      _setAddrWindow(y1, x1-(pxlen), y1, x1-1);
     } else {
-      _setAddrWindow(x1-pxlen, y1+1, x1-1, y1+1);
+      _setAddrWindow(x1-(pxlen), y1, x1-1, y1);
     }
     _drawPixels(pxlen);
   }
@@ -1326,6 +1325,9 @@ uint8_t ILI9341_ESP32::readcommand8(uint8_t c, uint8_t index) {
 
 void ILI9341_ESP32::_drawPixels(size_t length){
   digitalWrite(pin_dc, HIGH);
+  //the following two lines makes things faster when few pixels are written (outline figures , etc) but slower when writing many pixels (filled figures)
+  //if(length==1){ SPI.write16(buf[0]<<8 | buf[1]);  return; }; //write16 is faster than writeBytes
+  //if(length==2){ SPI.write32(buf[0]<<24 | buf[1]<<16 | buf[2]<<8 | buf[3]); return; }; //write32 is faster than writebytes
   while(length>=32){
     SPI.writeBytes(buf, 64);
     length-=32;
