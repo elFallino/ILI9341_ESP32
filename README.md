@@ -19,7 +19,7 @@ If you find a bug or think that there are things that can be done smarter, faste
 | --- | --- | --- | --- |
 | Screen Fill             |     189280 |  104626 (faster) |   662772 (slower) |
 | Text                    |      70418 |   12330 (faster) |    51971 (faster) |
-| Lines                   |     667364 |  105083 (faster) |   511414 (faster) |
+| Lines                   |     665410 |  105083 (faster) |   511414 (faster) |
 | Horz/Vert Lines         |      21896 |    9329 (faster) |    55201 (slower) |
 | Rectangles (outline)    |      17355 |    6336 (faster) |    35831 (slower) |
 | Rectangles (filled)     |     395414 |  217453 (faster) |  1376127 (slower) |
