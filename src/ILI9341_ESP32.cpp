@@ -286,7 +286,6 @@ void ILI9341_ESP32::drawFastHLine(uint16_t x, uint16_t y, uint16_t w, uint16_t c
 */
 void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,  uint16_t color){
     _fillBuff(color);
-
     uint16_t steep = abs(y2-y1) > abs(x2 - x1);
 
     if (steep) {
@@ -316,30 +315,30 @@ void ILI9341_ESP32::drawLine(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,
 
     SPI_BEGIN
     for (; x1<=x2; x1++) {
+      pxlen++;
       err -= dy;
       if (err < 0) {
         if(steep){
-          _setAddrWindow(y1, x1-(pxlen), y1, x1-1);
+          _setAddrWindow(y1, x1-(pxlen-1), y1, x1);
         } else {
-          _setAddrWindow(x1-(pxlen), y1, x1-1, y1);
+          _setAddrWindow(x1-(pxlen-1), y1, x1, y1);
         }
         _drawPixels(pxlen);
         y1 += ystep;
         err += dx;
-        pxlen=1;
-      } else {
-        pxlen++;
+        pxlen=0;
       }
+    } //for
+
+    if(pxlen>0){    //draw resst if any or when drawing a horizontal or vertical line
+      if(steep){
+        _setAddrWindow(y1, x1-(pxlen-1), y1, x1);
+      } else {
+        _setAddrWindow(x1-(pxlen-1), y1, x1, y1);
+      }
+      _drawPixels(pxlen);
     }
     SPI_END
-
-    //displaying the rest
-    if(steep){
-      _setAddrWindow(y1, x1-(pxlen), y1, x1-1);
-    } else {
-      _setAddrWindow(x1-(pxlen), y1, x1-1, y1);
-    }
-    _drawPixels(pxlen);
   }
 
 
